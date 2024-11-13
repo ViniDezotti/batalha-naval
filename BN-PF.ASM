@@ -6,11 +6,13 @@ TITLE BATALHA_NAVAL
 
 ; ################################### Macros ###################################
 PULA_LINHA MACRO
-    MOV AH, 2
-    MOV DL, 0AH
+    PUSH DX
+    MOV AH,2
+    MOV DL,0AH
     INT 21h
-    MOV DL, 0Dh
+    MOV DL,0Dh
     INT 21h
+    POP DX
 ENDM
 
 SALVA_REGS MACRO R1,R2,R3,R4
@@ -27,10 +29,31 @@ RET_REGS MACRO R1,R2,R3,R4
     POP R4
 ENDM   
 
+; Macro para imprimir strings
+; - STRING: texto desejado
 PRINT_STR MACRO STRING
     MOV AH,9
     LEA DX,STRING
     INT 21h
+ENDM
+
+; Macro para imprimir espaços X vezes
+; - QUANT: quantidade de espaços
+PRINT_ESPACO MACRO QUANT
+    LOCAL LOCAL_LOOP
+    PUSH CX
+    PUSH DX
+    PUSH AX
+    MOV CX,QUANT
+    MOV DL,' '
+    MOV AH,2
+
+    LOCAL_LOOP:
+        INT 21h
+        LOOP LOCAL_LOOP
+    POP AX
+    POP DX
+    POP CX
 ENDM
 
 ; Macro para inserir embarcação (Encouraçado, Fragata ou Submarino)
@@ -69,7 +92,6 @@ INSERE_HIDROAVIAO MACRO LINHA, COLUNA
     MOV BX,AX       ; BX = coluna
 
     MOV MAT_GABARITO[BX][SI],1
-
     ADD BX,10
     MOV MAT_GABARITO[BX][SI],1
     INC SI
@@ -80,10 +102,14 @@ INSERE_HIDROAVIAO MACRO LINHA, COLUNA
 ENDM
 
 .DATA
-
 ; ################################### Mensagens ###################################
 MSG_INTRO_TITLE     DB "            ==== { Batalha naval } ====$"
 MSG_INTRO_SUBTITLE  DB 10,13,"Destrua as embarcacoes para ganhar$"
+MSG_INTRO_REGRAS    DB 10,13,"Regras: $"
+MSG_INTRO_REGRA_1   DB 10,13,"- Digite uma linha (A-J) quando solicitado $"
+MSG_INTRO_REGRA_2   DB 10,13,"- Digite uma coluna (1-10) quando solicitado $"
+MSG_INTRO_REGRA_3   DB 10,13,"- Para encerrar o jogo, pressione ENTER quando for solicitado uma linha $"
+
 MSG_INTRO_HASH      DB 10,13,"Digite um numero de 0 a 9 para sortear um tabuleiro: $" 
 MSG_TIRO_LINHA      DB 10,13,"Digite a linha do tiro: $"
 MSG_TIRO_COLUNA     DB 10,13,"Digite a coluna do tiro: $"
@@ -91,9 +117,10 @@ MSG_TIRO_COLUNA     DB 10,13,"Digite a coluna do tiro: $"
 ; ################################### Variaveis e constantes ###################################
 MAT_TABULEIRO       DB 10 DUP(10 DUP(0))
 MAT_GABARITO        DB 10 DUP(10 DUP(0))
+ALVOS               DB 19
+TIROS               DB 0
 
 .CODE
-
 MAIN PROC
     MOV AX,@DATA
     MOV DS,AX
@@ -105,56 +132,78 @@ MAIN ENDP
 
 ; ################################### Imprime tabuleiro ###################################
 IMPRIME PROC
-    MOV CL, 10              ; Contador de linhas
-    XOR BX, BX              ; Endereço inicial da linha
-    MOV AH, 2
+    ; Cabecalho indice das colunas (0-9)
+    MOV AH,2
+    MOV CX,10
+    MOV DH,'0'
+
     PULA_LINHA
+    PRINT_ESPACO 5
+    HEADER_COLUNA:
+        MOV DL,DH
+        INT 21h
+        PRINT_ESPACO 2
+        INC DH
+        LOOP HEADER_COLUNA
 
-    LOCAL_LOOP_LINHA:
-        XOR SI, SI              ; Endereço inicial da coluna
-        MOV CH, 10              ; Contador de colunas
+    ; Impressão da matriz
+    MOV CL,10                                   ; Contador de linhas
+    XOR BX,BX                                   ; Endereço inicial da linha
+    MOV DL,'A'
 
-        LOCAL_LOOP_COLUNA:
-            MOV AL, MAT_GABARITO[BX][SI]    ; Carrega o valor da célula atual em AL
-            CMP AL, 0
-            JE  CASA_NAO_JOGADA     ; Se AL = 0, jogador ainda nao atirou nela
-            CMP AL, 1
-            JE CASA_ATINGIDA        ; Se AL = 1, jogador já acertou um barco
-            CMP AL, 2
-            JE CASA_VAZIA           ; Se AL = 2, jogador já acertou a água
+    PULA_LINHA
+    PULA_LINHA
+    LOOP_LINHA:
+        XOR SI,SI                               ; Endereço inicial da coluna
+        MOV CH,10                               ; Contador de colunas
 
-            JMP PROXIMO             ; Pula para a próxima célula se nenhuma condição foi atendida
+        ; Indice das linhas (A-J)
+        PRINT_ESPACO 2
+        INT 21h                                 ; Imprime letra correspondente a linha
+        PUSH DX
+        PRINT_ESPACO 2
 
+        ; Impressão da matriz
+        LOOP_COLUNA:
+            MOV AL,MAT_GABARITO[BX][SI]         ; Carrega o valor da célula atual em AL
+            CMP AL,0
+            JE  CASA_NAO_JOGADA                 ; Se AL = 0, jogador ainda nao atirou nela
+            CMP AL,1
+            JE CASA_ATINGIDA                    ; Se AL = 1, jogador já acertou um barco
+            CMP AL,2
+            JE CASA_VAZIA                       ; Se AL = 2, jogador já acertou a água
+
+            JMP PROXIMO                         ; Pula para a próxima célula se nenhuma condição foi atendida
             CASA_NAO_JOGADA:
-                MOV DL, 219
+                MOV DL,219
                 JMP PRINT_CHAR
-
             CASA_ATINGIDA:
-                MOV DL, 'X'
+                MOV DL,'X'
                 JMP PRINT_CHAR
 
             CASA_VAZIA:
-                MOV DL, ' '             ; Caractere para 2
+                MOV DL,' '              ; Caractere para 2
 
             PRINT_CHAR:
                 INT 21h                 ; Imprime o caractere em DL
 
             PROXIMO:
-                MOV DL, ' '             ; Espaço entre colunas
-                MOV AH, 2
-                INT 21h
-                INT 21h
+                PRINT_ESPACO 2
                 INC SI
                 DEC CH
-                JNZ LOCAL_LOOP_COLUNA   ; Repete até completar a linha
+                JNZ LOOP_COLUNA         ; Repete até completar a linha
 
         PULA_LINHA           
         PULA_LINHA
         ADD BX,10
+        POP DX
+        INC DL
         DEC CL
-    JNZ LOCAL_LOOP_LINHA    ; Repete até completar todas as linhas
+        JZ SAI_LOOP_LINHA
+        JMP LOOP_LINHA                  ; Repete até completar todas as linhas
 
-    RET
+    SAI_LOOP_LINHA:
+        RET
 IMPRIME ENDP
 
 ; ################################### Limpa tela ###################################
@@ -174,10 +223,16 @@ INICIALIZA_JOGO PROC
     PULA_LINHA
     PRINT_STR MSG_INTRO_SUBTITLE
     PULA_LINHA
+    PRINT_STR MSG_INTRO_REGRAS
+    PRINT_STR MSG_INTRO_REGRA_1
+    PRINT_STR MSG_INTRO_REGRA_2
+    PRINT_STR MSG_INTRO_REGRA_3
+    PULA_LINHA
 
     XOR DX,DX
     MOV CX,4
 
+    ; Sorteia tabuleiro de acordo com o número (0-9) inserdo pelo user
     LE_HASH:
         PRINT_STR MSG_INTRO_HASH
         MOV AH,1
@@ -185,17 +240,20 @@ INICIALIZA_JOGO PROC
         AND AL,0Fh
         CMP AL,0
         JL LE_HASH
-        CMP AL,3
+        CMP AL,9
         JG LE_HASH
 
-        CMP AL,0
-    JE CALL_TABULEIRO1
-    CMP AL,1
-    JE CALL_TABULEIRO2
-    CMP AL,2
-    JE CALL_TABULEIRO3
-    CMP AL,3
-    JE CALL_TABULEIRO4
+        MOV BL,4
+        DIV BL
+
+        CMP AH,0
+        JE CALL_TABULEIRO1
+        CMP AH,1
+        JE CALL_TABULEIRO2
+        CMP AH,2
+        JE CALL_TABULEIRO3
+        CMP AH,3
+        JE CALL_TABULEIRO4
     RET
 
 CALL_TABULEIRO1:
@@ -212,10 +270,11 @@ CALL_TABULEIRO3:
 
 CALL_TABULEIRO4:
     CALL CARREGAR_TABULEIRO4
-    CALL IMPRIME
+    
     JMP END_CALL_TABULEIRO
 
 END_CALL_TABULEIRO:
+    CALL IMPRIME
     RET
 INICIALIZA_JOGO ENDP
 
@@ -264,4 +323,11 @@ CARREGAR_TABULEIRO4 PROC
     RET
 CARREGAR_TABULEIRO4 ENDP
 
+; ################################### Lógica do jogo ###################################
+; JOGO PROC
+;     XOR
+;     IMPRIME:
+
+; JOGO ENDP
 END MAIN
+
