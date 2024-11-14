@@ -56,6 +56,32 @@ PRINT_ESPACO MACRO QUANT
     POP CX
 ENDM
 
+; Macro para imprimir variavel
+; - VAR: variavel
+PRINT_VAR MACRO VAR
+    SALVA_REGS AX,BX,CX,DX
+    XOR AX,AX
+    XOR CX,CX
+
+    MOV AL,VAR
+    MOV CL,10
+
+    DIV CL
+    
+    MOV CL,AH
+    
+    MOV AH,2
+    MOV DL,AL
+    ADD DL,30h
+    INT 21h
+
+    MOV DL,CL
+    ADD DL,30h
+    INT 21h
+
+    RET_REGS DX,CX,BX,AX
+ENDM
+
 ; Macro para inserir embarcação (Encouraçado, Fragata ou Submarino)
 ; - LINHA: linha do tabuleiro onde se inicia a embarcação
 ; - COLUNA: coluna inicial do tabuleiro
@@ -104,19 +130,25 @@ ENDM
 .DATA
 ; ################################### Mensagens ###################################
 MSG_INTRO_TITLE     DB "            ==== { Batalha naval } ====$"
-MSG_INTRO_SUBTITLE  DB 10,13,"Destrua as embarcacoes para ganhar$"
-MSG_INTRO_REGRAS    DB 10,13,"Regras: $"
-MSG_INTRO_REGRA_1   DB 10,13,"- Digite uma linha (A-J) quando solicitado $"
-MSG_INTRO_REGRA_2   DB 10,13,"- Digite uma coluna (1-10) quando solicitado $"
-MSG_INTRO_REGRA_3   DB 10,13,"- Para encerrar o jogo, pressione ENTER quando for solicitado uma linha $"
-MSG_INTRO_HASH      DB 10,13,"Digite um numero de 0 a 9 para sortear um tabuleiro: $" 
+MSG_INTRO_SUBTITLE  DB 10,13," Destrua as embarcacoes para ganhar (19 alvos)$"
 
-MSG_TIRO_LINHA      DB 10,13,"Digite a linha do tiro (A-J): $"
-MSG_TIRO_COLUNA     DB 10,13,"Digite a coluna do tiro (0-9): $"
+MSG_INTRO_REGRAS    DB 10,13," Regras: $"
+MSG_INTRO_REGRA_1   DB 10,13," - Digite uma linha (A-J) quando solicitado $"
+MSG_INTRO_REGRA_2   DB 10,13," - Digite uma coluna (1-10) quando solicitado $"
+MSG_INTRO_REGRA_3   DB 10,13," - Para encerrar o jogo, pressione ENTER quando for solicitado uma linha $"
+MSG_INTRO_HASH      DB 10,13," Digite um numero de 0 a 9 para sortear um tabuleiro: $" 
 
-MSG_TIRO_REPETIDO   DB "Voce ja atirou nessas coordenadas.$"
-MSG_ERROU_TIRO      DB "Voce errou o tiro!$"
-MSG_ACERTOU_TIRO    DB "Voce acertou o tiro! Boa!$"
+MSG_TIRO_LINHA      DB 10,13," Digite a linha do tiro (A-J): $"
+MSG_TIRO_COLUNA     DB 10,13," Digite a coluna do tiro (0-9): $"
+
+MSG_TIRO_REPETIDO   DB " Voce ja atirou nessas coordenadas.$"
+MSG_ERROU_TIRO      DB " Voce errou o tiro!$"
+MSG_ACERTOU_TIRO    DB " Voce acertou o tiro! Restam $"
+
+MSG_ABANDONO        DB 10,13," Voce desistiu!$"
+MSG_FIM_DO_JOGO     DB 10,13," Fim de jogo! - Voce destruiu todos os alvos$"
+MSG_TIROS           DB 10,13," Tiros dados: $"
+MSG_ALVOS_RESTANTES DB 10,13," Alvos restantes: $"
 
 ; ################################### Variaveis e constantes ###################################
 MAT_GABARITO        DB 10 DUP(10 DUP(0))
@@ -138,11 +170,10 @@ LOOP_JOGO:
     CALL TELA
     CALL PROCESSA_TIRO
     CALL IMPRIME_TABULEIRO
-    CMP TIROS,100
+    CMP ALVOS,0
     JNE LOOP_JOGO
 
-    MOV AH,4Ch
-    INT 21h
+    CALL FIM_DO_JOGO
 MAIN ENDP
 
 ; ################################### Imprime tabuleiro ###################################
@@ -339,13 +370,26 @@ LE_JOGADA PROC
         PRINT_STR MSG_TIRO_LINHA
         MOV AH,1
         INT 21h
+        CMP AL,13
+        JE DESISTENCIA
         CMP AL,'A'
-        JL LE_LINHA
+        JL LE_MINUSCULA
         CMP AL,'J'
-        JG LE_LINHA
+        JG LE_MINUSCULA
         SUB AL,'A'
+        JMP ARMAZENA_LINHA
+
+        ; Caso o usuario "erre" e digite minuscula
+        LE_MINUSCULA:
+            CMP AL,'a'
+            JL LE_LINHA
+            CMP AL,'j'
+            JG LE_LINHA
+            SUB AL,'a'
+
+        ARMAZENA_LINHA:
         XOR BX,BX
-        MOV BL,AL                   ; BX guardará o valor (0-9) correspondente a linha (A-J)
+        MOV BL,AL                   ; BX(BL) guardará o valor (0-9) correspondente a linha (A-J)
 
     LE_COLUNA:
         PRINT_STR MSG_TIRO_COLUNA
@@ -359,6 +403,9 @@ LE_JOGADA PROC
         XOR AH,AH
         MOV SI,AX                   ; SI guardará o valor (0-9) correspondente a coluna
 RET
+
+    DESISTENCIA:
+        JMP FIM_DO_JOGO
 LE_JOGADA ENDP
 
 ; ################################### Processa tiro ###################################
@@ -379,20 +426,53 @@ PROCESSA_TIRO PROC
         CMP CH,0
         JE ERROU_TIRO
 
-        PRINT_STR MSG_ACERTOU_TIRO
+        PRINT_STR MSG_ACERTOU_TIRO              ; Caso acerte, marca no tabuleiro e decrementa alvos
         MOV MAT_TABULEIRO[BX][SI],CH
-        JMP FIM_PROCESSA_TIRO
         DEC ALVOS
+        PRINT_VAR ALVOS
+        JMP FIM_PROCESSA_TIRO
 
         ERROU_TIRO:
-            PRINT_STR MSG_ERROU_TIRO
+            PRINT_STR MSG_ERROU_TIRO            ; Caso erre, marca no tabuleiro
             MOV MAT_TABULEIRO[BX][SI],2
 
     FIM_PROCESSA_TIRO:
         PULA_LINHA
-        INC TIROS
+        INC TIROS                               ; Incrementa numero de tiros
         RET
 PROCESSA_TIRO ENDP
 
+; ################################### Fim do jogo ###################################
+FIM_DO_JOGO PROC
+    CALL TELA
+    PRINT_STR MSG_INTRO_TITLE
+    PULA_LINHA
+
+    MOV CH,ALVOS
+    CMP CH,0
+    JNE DESISTIU                        ; Se alvos for > 0, então jogador desistiu
+    PRINT_STR MSG_FIM_DO_JOGO
+    PULA_LINHA
+    JMP STATS
+
+    DESISTIU:
+        PRINT_STR MSG_ABANDONO
+        PULA_LINHA
+
+        PRINT_STR MSG_ALVOS_RESTANTES   ; Caso o jogador tenha desistido, e mostrado o numero de alvos restantes
+        PRINT_VAR ALVOS
+    
+    STATS:
+        PRINT_STR MSG_TIROS
+        PRINT_VAR TIROS
+
+    CALL FIM_DO_PROGRAMA
+FIM_DO_JOGO ENDP
+
+; ################################### Fim do programa ###################################
+FIM_DO_PROGRAMA PROC
+    MOV AH,4Ch
+    INT 21h
+FIM_DO_PROGRAMA ENDP
 END MAIN
 
