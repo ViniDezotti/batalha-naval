@@ -134,7 +134,7 @@ MSG_INTRO_SUBTITLE  DB 10,13," Destrua as embarcacoes para ganhar (19 alvos)$"
 
 MSG_INTRO_REGRAS    DB 10,13," Regras: $"
 MSG_INTRO_REGRA_1   DB 10,13," - Digite uma linha (A-J) quando solicitado $"
-MSG_INTRO_REGRA_2   DB 10,13," - Digite uma coluna (1-10) quando solicitado $"
+MSG_INTRO_REGRA_2   DB 10,13," - Digite uma coluna (0-9) quando solicitado $"
 MSG_INTRO_REGRA_3   DB 10,13," - Para encerrar o jogo, pressione ENTER quando for solicitado uma linha $"
 MSG_INTRO_HASH      DB 10,13," Digite um numero de 0 a 9 para sortear um tabuleiro: $" 
 
